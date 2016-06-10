@@ -1,0 +1,12 @@
+{
+  "name": "ecr-clean",
+  "version": "1.0.0",
+  "description": "ECR cleanup",
+  "private": true,
+  "main": "index.js",
+  "author": "Taimos GmbH",
+  "license": "MIT",
+  "dependencies": {
+    "q": "^1.4.1"
+  }
+}
