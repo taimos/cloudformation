@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 
-./ecr-clean/build.sh
+cd ecr-clean
+./build.sh
