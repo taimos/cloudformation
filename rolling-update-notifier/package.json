@@ -1,0 +1,13 @@
+{
+  "name": "rolling-update-notifier",
+  "version": "0.0.0",
+  "description": "Lambda function to signal CFN when instance is InService",
+  "private": true,
+  "main": "index.js",
+  "author": "Taimos GmbH",
+  "license": "MIT",
+  "dependencies": {
+    "aws-sdk": "^2.4.11",
+    "q": "^1.4.1"
+  }
+}

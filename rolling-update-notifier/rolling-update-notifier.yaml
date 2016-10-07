@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Lambda function to signal CFN that instances are ready'
+Resources:
+  FunctionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:*'
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action:
+                  - 'autoscaling:DescribeAutoScalingGroups'
+                  - 'elasticloadbalancing:DescribeInstanceHealth'
+                  - 'cloudformation:SignalResource'
+                Resource: '*'
+  Function:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt [FunctionRole, Arn]
+      Code:
+        S3Bucket: !Sub taimos-lambda-public-${AWS::Region}
+        S3Key: !Sub rolling-update-notifier-%%VERSION%%.zip
+      Runtime: nodejs4.3
+      Timeout: '300'
+  InvokeLambdaPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !GetAtt [Function, Arn]
+      Action: 'lambda:InvokeFunction'
+      Principal: events.amazonaws.com
+Outputs:
+  LambdaFunction:
+    Description: 'The ARN of the Lambda'
+    Value: !GetAtt [Function, Arn]
