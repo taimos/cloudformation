@@ -1,0 +1,174 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'MongoDB cluster'
+Parameters:
+  Name:
+    Type: String
+    Description: the name of the cluster
+  Domain:
+    Type: String
+    Description: the domain to use for the hosts
+  InstanceType:
+    Type: String
+  KeyPair:
+    Type: 'AWS::EC2::KeyPair::KeyName'
+  BackupBucket:
+    Type: String
+  NodeId:
+    Type: String
+  VPC:
+    Type: String
+  Subnet:
+    Type: String
+  SecurityGroup:
+    Type: String
+  IAMInstanceProfile:
+    Type: String
+Mappings:
+  RegionMap:
+    eu-central-1:
+      AMI: ami-9bf712f4
+    eu-west-1:
+      AMI: ami-7abd0209
+Resources:
+  LaunchConfig:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Properties:
+      AssociatePublicIpAddress: true
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeType: gp2
+            VolumeSize: '20'
+      EbsOptimized: false
+      InstanceMonitoring: false
+      IamInstanceProfile: !Ref IAMInstanceProfile
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPair
+      SecurityGroups:
+        - !Ref SecurityGroup
+      UserData:
+        'Fn::Base64': !Sub |
+            #!/bin/bash
+
+            yum install -y epel-release
+            yum install -y python-pip wget java-1.8.0-openjdk-devel unzip nmap-ncat
+            pip install awscli
+
+            setenforce 0
+
+            # Setup DNS entries
+            export DNS_HOST=mongodb-${Name}-${NodeId}
+            export DNS_DOMAIN=${Domain}
+            curl https://raw.githubusercontent.com/taimos/route53-updater/v1.6/cloud-init/ec2-private.sh | bash
+            # additional external hostname
+            java -jar /root/route53-updater.jar --domain ${Domain} --host mongodb-${Name}-ext-${NodeId}
+
+            service iptables stop
+            service ip6tables stop
+
+            echo "cp -f /usr/share/zoneinfo/Europe/Berlin /etc/localtime" >> /etc/rc.local
+            aws configure set default.region ${AWS::Region}
+
+            cat > /etc/yum.repos.d/mongodb-org-3.2.repo << "EOF"
+            [mongodb-org-3.2]
+            name=MongoDB Repository
+            baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/3.2/x86_64/
+            gpgcheck=1
+            enabled=1
+            gpgkey=https://www.mongodb.org/static/pgp/server-3.2.asc
+            EOF
+
+            yum install -y mongodb-org
+
+            cat > /etc/mongod.conf <<EOF
+            replication:
+               replSetName: ${Name}
+            systemLog:
+              destination: syslog
+            storage:
+              dbPath: /var/lib/mongo
+              journal:
+                enabled: true
+            processManagement:
+              fork: true
+              pidFilePath: /var/run/mongodb/mongod.pid
+            net:
+              port: 27017
+            EOF
+
+            chkconfig mongod on
+            service mongod start
+
+            cat > /root/mongobackup.sh <<"EOF"
+            #!/bin/bash
+
+            # check if I am primary
+            if ! echo 'rs.isMaster();' | mongo --quiet | grep '"ismaster" : true'; then
+                # I am not primary so nothing to do
+                exit 0;
+            fi
+
+            timestampY=$(date "+%Y")
+            timestampM=$(date "+%m")
+            timestampD=$(date "+%d")
+            timestampHMS=$(date "+%H-%M-%S")
+            timestamp=${!timestampY}-${!timestampM}-${!timestampD}-${!timestampHMS}
+            basedir=/tmp/backup
+
+            mkdir -p ${!basedir}/mongodump
+            mkdir -p ${!basedir}/mongotar
+
+            for i in $(echo "show dbs" | mongo --quiet | cut -d ' ' -f 1)
+            do
+                cd ${!basedir}
+                echo "Saving database $i"
+                mongodump --host localhost --db $i --out ${!basedir}/mongodump
+                echo "Creating tgz"
+                cd ${!basedir}/mongodump
+                tar -czf ${!basedir}/mongotar/mongodb-$i-$timestamp.tgz $i
+                aws s3 cp ${!basedir}/mongotar/mongodb-$i-$timestamp.tgz s3://${BackupBucket}/$i/${!timestampY}/${!timestampM}/${!timestampD}/
+            done
+
+            rm -rf ${!basedir}
+            EOF
+
+            cat > /etc/cron.d/mongobackup <<EOF
+            SHELL=/bin/bash
+            PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+            */15 * * * *   root  bash /root/mongobackup.sh
+            EOF
+
+            # TODO check node 0 and replSet not initialized
+            if [[ ${NodeId} == '0' ]]; then
+            if ! echo 'rs.status();' | mongo --quiet | grep '"ok" : 1'; then
+              while ! nc -w 5 mongodb-${Name}-1.${Domain} 27017 < /dev/null ; do
+                  echo "Waiting for secondary on mongodb-${Name}-1.${Domain}"
+              done
+
+              while ! nc -w 5 mongodb-${Name}-2.${Domain} 27017 < /dev/null ; do
+                  echo "Waiting for secondary on mongodb-${Name}-2.${Domain}"
+              done
+
+            mongo <<EOF
+              rs.initiate({"_id":"${Name}",members:[{"_id":0,"host":"mongodb-${Name}-0.${Domain}"},{"_id":1,"host":"mongodb-${Name}-1.${Domain}"},{"_id":2,"host":"mongodb-${Name}-2.${Domain}"}]})
+            EOF
+            fi
+            fi
+
+  AutoScalingGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      HealthCheckGracePeriod: 300
+      HealthCheckType: EC2
+      DesiredCapacity: '1'
+      LaunchConfigurationName: !Ref LaunchConfig
+      MaxSize: '1'
+      MinSize: '1'
+      Tags:
+        - Key: Name
+          Value: !Sub MongoDB-Cluster-${Name}-${NodeId}
+          PropagateAtLaunch: 'true'
+      VPCZoneIdentifier:
+        - !Ref Subnet

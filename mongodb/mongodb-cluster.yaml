@@ -1,0 +1,227 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'MongoDB cluster'
+Parameters:
+  Name:
+    Type: String
+    Description: the name of the cluster
+  Domain:
+    Type: String
+    Description: the domain to use for the hosts
+  NetPrefix:
+    Type: String
+    Description: 'the first three bytes of the IP range (e.g. 10.0.0)'
+  InstanceType:
+    Type: String
+    Description: The type of instance to use for the nodes
+  KeyPair:
+    Type: 'AWS::EC2::KeyPair::KeyName'
+Resources:
+  BackupBucket:
+    Type: 'AWS::S3::Bucket'
+    DeletionPolicy: Retain
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Sub ${NetPrefix}.0/24
+      EnableDnsHostnames: 'true'
+      EnableDnsSupport: 'true'
+      Tags:
+        - Key: Name
+          Value: MongoDBClusterVPC
+  SubnetA:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Sub ${AWS::Region}a
+      CidrBlock: !Sub ${NetPrefix}.0/26
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: MongoDBClusterSubnetA
+  SubnetB:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Sub ${AWS::Region}b
+      CidrBlock: !Sub ${NetPrefix}.64/26
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: MongoDBClusterSubnetB
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MongoDBClusterIGW
+  GatewayToInternet:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: MongoDBClusterRouting
+  PublicRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: GatewayToInternet
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  SubnetARouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetA
+      RouteTableId: !Ref PublicRouteTable
+  SubnetBRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetB
+      RouteTableId: !Ref PublicRouteTable
+  IAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: MongoDB-Cluster-Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                  - 's3:PutObject'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${BackupBucket}'
+                  - !Sub 'arn:aws:s3:::${BackupBucket}/*'
+                Effect: Allow
+              - Action:
+                  - 'route53:ChangeResourceRecordSets'
+                  - 'route53:GetHostedZone'
+                  - 'route53:ListHostedZones'
+                  - 'route53:ListResourceRecordSets'
+                Resource: '*'
+                Effect: Allow
+  IAMInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref IAMRole
+  MongoDBSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Security group for MongoDB Nodes'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: MongoDBSecurityGroup
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: icmp
+          FromPort: '-1'
+          ToPort: '-1'
+          CidrIp: 0.0.0.0/0
+  ClusterSecurityGroupIngress:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId:  !Ref MongoDBSecurityGroup
+      IpProtocol: tcp
+      FromPort: '27017'
+      ToPort: '27017'
+      SourceSecurityGroupId: !Ref MongoDBSecurityGroup
+
+  Node0:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      Parameters:
+        Name: !Ref Name
+        Domain: !Ref Domain
+        BackupBucket: !Ref BackupBucket
+        KeyPair: !Ref KeyPair
+        InstanceType: !Ref InstanceType
+        NodeId: 0
+        VPC: !Ref VPC
+        Subnet: !Ref SubnetA
+        SecurityGroup: !Ref MongoDBSecurityGroup
+        IAMInstanceProfile: !Ref IAMInstanceProfile
+      TemplateURL: 'https://s3.amazonaws.com/taimos-cfn-public/templates/mongodb-node.yaml'
+  Node1:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      Parameters:
+        Name: !Ref Name
+        Domain: !Ref Domain
+        BackupBucket: !Ref BackupBucket
+        KeyPair: !Ref KeyPair
+        InstanceType: !Ref InstanceType
+        NodeId: 1
+        VPC: !Ref VPC
+        Subnet: !Ref SubnetB
+        SecurityGroup: !Ref MongoDBSecurityGroup
+        IAMInstanceProfile: !Ref IAMInstanceProfile
+      TemplateURL: 'https://s3.amazonaws.com/taimos-cfn-public/templates/mongodb-node.yaml'
+  Node2:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      Parameters:
+        Name: !Ref Name
+        Domain: !Ref Domain
+        BackupBucket: !Ref BackupBucket
+        KeyPair: !Ref KeyPair
+        InstanceType: !Ref InstanceType
+        NodeId: 2
+        VPC: !Ref VPC
+        Subnet: !Ref SubnetA
+        SecurityGroup: !Ref MongoDBSecurityGroup
+        IAMInstanceProfile: !Ref IAMInstanceProfile
+      TemplateURL: 'https://s3.amazonaws.com/taimos-cfn-public/templates/mongodb-node.yaml'
+
+Outputs:
+  VPC:
+    Description: 'The VPC of the MongoDB cluster'
+    Value: !Ref VPC
+    Export:
+      Name: !Sub MongoDB-Cluster-${Name}-VPC
+  RouteTable:
+    Description: 'The VPC RouteTable'
+    Value: !Ref PublicRouteTable
+    Export:
+      Name: !Sub MongoDB-Cluster-${Name}-RTB
+  SubnetA:
+    Description: 'The Subnet in AZ a'
+    Value: !Ref SubnetA
+    Export:
+      Name: !Sub MongoDB-Cluster-${Name}-SubnetA
+  SubnetB:
+    Description: 'The Subnet in AZ b'
+    Value: !Ref SubnetB
+    Export:
+      Name: !Sub MongoDB-Cluster-${Name}-SubnetB
+  SecurityGroup:
+    Description: 'The SecurityGroup of the nodes'
+    Value: !Ref MongoDBSecurityGroup
+    Export:
+      Name: !Sub MongoDB-Cluster-${Name}-SG
+  NodeNames:
+    Description: 'The hostnames of the cluster nodes for database access'
+    Value: !Sub mongodb-${Name}-0.${Domain},mongodb-${Name}-1.${Domain},mongodb-${Name}-2.${Domain}
+  ExternalNodeNames:
+    Description: 'The external hostnames of the cluster nodes for SSH access'
+    Value: !Sub mongodb-${Name}-ext-0.${Domain},mongodb-${Name}-ext-1.${Domain},mongodb-${Name}-ext-2.${Domain}
