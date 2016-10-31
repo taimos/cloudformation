@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Lambda function to cleanup old images in ECR'
+Parameters:
+  ScheduleExpression:
+    Type: String
+    Description: 'The schedule expression for the lambda invocation'
+    Default: 'rate(1 day)'
+Resources:
+  FunctionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'ecr:*'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+  CleanFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt [FunctionRole, Arn]
+      Code:
+        S3Bucket: !Sub taimos-lambda-public-${AWS::Region}
+        S3Key: !Sub ecr-clean-%%VERSION%%.zip
+      Runtime: nodejs4.3
+      Timeout: '30'
+  CleanRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      ScheduleExpression:
+        Ref: ScheduleExpression
+      Targets:
+        - Id: ECRCleanScheduler
+          Arn: !GetAtt [CleanFunction, Arn]
+  InvokeLambdaPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !GetAtt [CleanFunction, Arn]
+      Action: 'lambda:InvokeFunction'
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt [CleanRule, Arn]

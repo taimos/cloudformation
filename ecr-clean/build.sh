@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION=$(jp -f package.json -u "version")
+VERSION=$(git rev-list --all --count)
 
 npm install
 
@@ -11,10 +11,10 @@ mkdir dist
 
 zip -r dist/ecr-clean.zip index.js node_modules
 
-cfn-include -t -m ecr-clean.template > dist/ecr-clean.compiled.template
+sed "s/%%VERSION%%/${VERSION}/g" ecr-clean.yaml > dist/ecr-clean.yaml
 
 # Global files
-aws s3 --region eu-central-1 cp dist/ecr-clean.compiled.template s3://taimos-cfn-public/templates/ecr-clean.template
+aws s3 --region eu-central-1 cp dist/ecr-clean.yaml s3://taimos-cfn-public/templates/ecr-clean.yaml
 
 # Regional files
 array=( eu-west-1 eu-central-1 )
