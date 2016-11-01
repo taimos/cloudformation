@@ -39,7 +39,7 @@ Resources:
       Role: !GetAtt [FunctionRole, Arn]
       Code:
         S3Bucket: !Sub taimos-lambda-public-${AWS::Region}
-        S3Key: !Sub ecr-clean-%%VERSION%%.zip
+        S3Key: ecr-clean-%%VERSION%%.zip
       Runtime: nodejs4.3
       Timeout: '30'
   CleanRule:
