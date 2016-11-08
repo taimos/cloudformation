@@ -71,10 +71,7 @@ Resources:
                     resolve(responseData);
                   });
                 });
-
-                req.on('error', function (err) {
-                  reject(err);
-                });
+                req.on('error', reject);
                 req.end();
               });
             }
@@ -84,16 +81,11 @@ Resources:
               if (json && json[awsRegion] && json[awsRegion].hvm) {
                 return json[awsRegion].hvm;
               }
-              return Promise.reject('Failed to get AMI from CoreOS');
+              return Promise.reject('Failed to get AMI');
             }
 
             function getInstances(coreOSImageId) {
-              var params = {
-                Filters: [{
-                  Name: "instance-state-name",
-                  Values: ["running"]
-                }]
-              };
+              var params = {Filters: [{Name: "instance-state-name", Values: ["running"]}]};
               return ec2.describeInstances(params).promise().then(function (instances) {
                 var instanceInfos = [];
                 instances.Reservations.forEach(function (res) {
@@ -136,11 +128,7 @@ Resources:
               var jobs = [];
               for (var image in outdated) {
                 if (outdated.hasOwnProperty(image)) {
-                  jobs.push(ec2.describeImages({
-                    ImageIds: [
-                      image
-                    ]
-                  }).promise().then(function (res) {
+                  jobs.push(ec2.describeImages({ImageIds: [image]}).promise().then(function (res) {
                     var id = res.Images[0].ImageId;
                     var name = res.Images[0].Name;
                     if (name.indexOf('CoreOS') > -1) {
