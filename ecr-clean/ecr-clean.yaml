@@ -75,7 +75,7 @@ Resources:
                 return Promise.all(data.repositories.map(repo => cleanRepo(repo.repositoryName)));
               }).then(function () {
                 callback(null, 'Successfully cleaned ECR');
-              }).fail(function (err) {
+              }).catch(function (err) {
                 console.log('ERROR: ', err, err.stack);
                 callback(err);
               });
