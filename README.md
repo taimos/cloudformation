@@ -23,7 +23,7 @@ The lambda will then wait for the instance to be marked as InService and will ca
 
 Example Rule:
 ```
-ASGLaunchRule:
+  ASGLaunchRule:
     Type: 'AWS::Events::Rule'
     Properties:
       Description: "Rule to notify lambda function for CFN signalling"
@@ -37,7 +37,7 @@ ASGLaunchRule:
             - !Ref AutoScalingGroup
       State: "ENABLED"
       Targets:
-        - Arn: <ARN of the deployed lambda>
+        - Arn: !ImportValue RollingUpdateLambda
           Id: "TargetFunction"
 ```
 
