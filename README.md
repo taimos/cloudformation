@@ -2,11 +2,15 @@
 
 ## ECR Clean
 
+`https://s3.amazonaws.com/taimos-cfn-public/templates/ecr-clean.yaml`
+
 [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=ecr-clean&templateURL=https://s3.amazonaws.com/taimos-cfn-public/templates/ecr-clean.yaml)
 
 Deploy AWS Lambda function to clean up untagged images from ECR.
 
 ## RollingUpdate notifier
+
+`https://s3.amazonaws.com/taimos-cfn-public/templates/rolling-update-notifier.yaml`
 
 [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=rolling-update-notifier&templateURL=https://s3.amazonaws.com/taimos-cfn-public/templates/rolling-update-notifier.yaml)
 
@@ -38,6 +42,8 @@ ASGLaunchRule:
 ```
 
 ## MongoDB Replica Set
+
+`https://s3.amazonaws.com/taimos-cfn-public/templates/mongodb-cluster.yaml`
 
 [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=mongodb-cluster&templateURL=https://s3.amazonaws.com/taimos-cfn-public/templates/mongodb-cluster.yaml)
 
