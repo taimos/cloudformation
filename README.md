@@ -88,6 +88,4 @@ Deploy AWS Lambda function to check for outdated CoreOS instances.
 # Tools to build it locally
 
 * node / npm
-* cfn-include
 * awscli
-* jp
