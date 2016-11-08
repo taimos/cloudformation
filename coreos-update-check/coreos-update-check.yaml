@@ -1,0 +1,214 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Lambda function to check for CoreOS updates'
+Parameters:
+  NotificationAddress:
+    Type: String
+    Description: 'The e-mail address to notify about updates'
+  ScheduleExpression:
+    Type: String
+    Description: 'The schedule expression for the lambda invocation'
+    Default: 'rate(1 day)'
+Resources:
+  NotificationTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      Subscription:
+        - Endpoint: !Ref NotificationAddress
+          Protocol: email
+  FunctionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'logs:*'
+                Resource: 'arn:aws:logs:*:*:*'
+              - Effect: Allow
+                Action: 'sns:Publish'
+                Resource: !Ref NotificationTopic
+              - Effect: Allow
+                Action:
+                  - 'ec2:DescribeInstances'
+                  - 'ec2:DescribeImages'
+                Resource: '*'
+  Function:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt [FunctionRole, Arn]
+      Code:
+        ZipFile: !Sub |
+            "use strict";
+
+            var AWS = require('aws-sdk');
+            var https = require('https');
+
+            var notificationTopic = '${NotificationTopic}';
+            var awsRegion = process.env.AWS_REGION;
+            var ec2 = new AWS.EC2({region: awsRegion});
+            var sns = new AWS.SNS({region: awsRegion});
+
+            function promisedRequest(requestOptions) {
+              return new Promise(function (resolve, reject) {
+                var req = https.request(requestOptions, function (response) {
+                  response.setEncoding('utf8');
+                  var responseData = '';
+                  response.on('data', function (data) {
+                    responseData += data;
+                  });
+                  response.on('end', function () {
+                    resolve(responseData);
+                  });
+                });
+                req.on('error', reject);
+                req.end();
+              });
+            }
+
+            function extractCoreOSImageId(data) {
+              var json = JSON.parse(data);
+              if (json && json[awsRegion] && json[awsRegion].hvm) {
+                return json[awsRegion].hvm;
+              }
+              return Promise.reject('Failed to get AMI');
+            }
+
+            function getInstances(coreOSImageId) {
+              var params = {Filters: [{Name: "instance-state-name", Values: ["running"]}]};
+              return ec2.describeInstances(params).promise().then(function (instances) {
+                var instanceInfos = [];
+                instances.Reservations.forEach(function (res) {
+                  res.Instances.forEach(function (instance) {
+                    var name = 'N/A';
+                    instance.Tags.forEach(function (tag) {
+                      if (tag.Key === 'Name') {
+                        name = tag.Value;
+                      }
+                    });
+                    instanceInfos.push({id: instance.InstanceId, ami: instance.ImageId, name: name});
+                  });
+                });
+                return {coreos: coreOSImageId, instanceInfos: instanceInfos};
+              });
+            }
+
+            function getOutdatedInstances(data) {
+              var outdated = [];
+              data.instanceInfos.forEach(function (info) {
+                if (info.ami !== data.coreos) {
+                  outdated.push(info);
+                }
+              });
+              return outdated;
+            }
+
+            function sortOutdatedByImage(outdated) {
+              var res = {};
+              outdated.forEach(function (e) {
+                if (!res[e.ami]) {
+                  res[e.ami] = [];
+                }
+                res[e.ami].push({id: e.id, name: e.name});
+              });
+              return res;
+            }
+
+            function resolveOutdatedImageInfo(outdated) {
+              var jobs = [];
+              for (var image in outdated) {
+                if (outdated.hasOwnProperty(image)) {
+                  jobs.push(ec2.describeImages({ImageIds: [image]}).promise().then(function (res) {
+                    var id = res.Images[0].ImageId;
+                    var name = res.Images[0].Name;
+                    if (name.indexOf('CoreOS') > -1) {
+                      return {ami: id, name: name, instances: outdated[id]};
+                    }
+                    console.log('Ignoring image ' + id + ' with name ' + name + ' as it is not CoreOS');
+                    return undefined;
+                  }));
+                }
+              }
+              return Promise.all(jobs);
+            }
+
+            function formatMessage(resolvedInfos) {
+              var text = '';
+              resolvedInfos.forEach(function (ami) {
+                if (!ami || !ami.ami) {
+                  return;
+                }
+                text += 'The following instances are using the outdated image ' + ami.ami + ' (' + ami.name + ')\n';
+                ami.instances.forEach(function (instance) {
+                  text += '  ' + instance.id + ' --> ' + instance.name + '\n';
+                });
+                text += '\n';
+              });
+              return text;
+            }
+
+            function sendMessage(message) {
+              if (message && message.length > 0) {
+                console.log(message);
+                var params = {
+                  Message: message,
+                  Subject: 'Outdated images found',
+                  TopicArn: notificationTopic
+                };
+                return sns.publish(params).promise();
+              }
+              return Promise.resolve();
+            }
+
+            exports.handler = function (event, context, callback) {
+              console.log("INFO: request Received.\nDetails:\n", JSON.stringify(event));
+
+              var coreOSrequest = {
+                host: 'coreos.com',
+                path: '/dist/aws/aws-stable.json',
+                method: 'GET'
+              };
+
+              promisedRequest(coreOSrequest)
+                .then(extractCoreOSImageId)
+                .then(getInstances)
+                .then(getOutdatedInstances)
+                .then(sortOutdatedByImage)
+                .then(resolveOutdatedImageInfo)
+                .then(formatMessage)
+                .then(sendMessage)
+                .then(function (data) {
+                  callback(null, data);
+                })
+                .catch(function (err) {
+                  console.log('ERROR: ', err, err.stack);
+                  callback(err);
+                });
+            };
+      Runtime: nodejs4.3
+      Timeout: '30'
+  Rule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      ScheduleExpression:
+        Ref: ScheduleExpression
+      Targets:
+        - Id: CoreOSUpdateScheduler
+          Arn: !GetAtt [Function, Arn]
+  InvokeLambdaPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !GetAtt [Function, Arn]
+      Action: 'lambda:InvokeFunction'
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt [Rule, Arn]

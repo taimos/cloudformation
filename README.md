@@ -77,6 +77,14 @@ You can use them to per the VPC and allow access from your instances.
 * MongoDB-Cluster-${Name}-SubnetB - SubnetB
 * MongoDB-Cluster-${Name}-SG - SecurityGroup
 
+## CoreOS Update Check
+
+`https://s3.amazonaws.com/taimos-cfn-public/templates/coreos-update-check.yaml`
+
+[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=ecr-clean&templateURL=https://s3.amazonaws.com/taimos-cfn-public/templates/coreos-update-check.yaml)
+
+Deploy AWS Lambda function to check for outdated CoreOS instances.
+
 # Tools to build it locally
 
 * node / npm
