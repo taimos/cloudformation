@@ -1,0 +1,340 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Setting up your own private and secure VPN'
+Parameters:
+  DNSHost:
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: 'must begin with a letter and contain only alphanumeric characters.'
+    Description: 'Hostname of the VPN Server'
+    MaxLength: '255'
+    MinLength: '1'
+    Type: String
+  DNSDomain:
+    Description: 'Domain of the VPN Server (must be Route53 Domain)'
+    MaxLength: '255'
+    MinLength: '1'
+    Type: String
+  VPNUsername:
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: 'must begin with a letter and contain only alphanumeric characters.'
+    Description: 'VPN Username'
+    MaxLength: '255'
+    MinLength: '1'
+    Type: String
+  VPNPassword:
+    ConstraintDescription: 'must contain at least 8 characters.'
+    Description: 'VPN Password (Min 8 characters)'
+    MaxLength: '255'
+    MinLength: '8'
+    NoEcho: 'true'
+    Type: String
+  VPNPhrase:
+    ConstraintDescription: 'must contain at least 16 characters.'
+    Description: 'Passphrase for IPSEC PSK (Min 16 characters)'
+    MaxLength: '255'
+    MinLength: '16'
+    NoEcho: 'true'
+    Type: String
+  InstanceType:
+    Type: String
+    Description: The type of instance to use for the nodes
+    Default: 't2.nano'
+  KeyPair:
+    Type: 'AWS::EC2::KeyPair::KeyName'
+Mappings:
+  RegionMap:
+    eu-central-1:
+      AMI: ami-9bf712f4
+    eu-west-1:
+      AMI: ami-7abd0209
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Sub 10.254.254.0/24
+      EnableDnsHostnames: 'true'
+      EnableDnsSupport: 'true'
+      Tags:
+        - Key: Name
+          Value: VPNServerVPC
+  SubnetA:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Sub ${AWS::Region}a
+      CidrBlock: !Sub 10.254.254.0/26
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: VPNServerSubnetA
+  SubnetB:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Sub ${AWS::Region}b
+      CidrBlock: !Sub 10.254.254.64/26
+      MapPublicIpOnLaunch: 'true'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: VPNServerSubnetB
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: VPNServerIGW
+  GatewayToInternet:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: VPNServerRouting
+  PublicRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: GatewayToInternet
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  SubnetARouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetA
+      RouteTableId: !Ref PublicRouteTable
+  SubnetBRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetB
+      RouteTableId: !Ref PublicRouteTable
+  IAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: MongoDB-Cluster-Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - 'route53:ChangeResourceRecordSets'
+                  - 'route53:GetHostedZone'
+                  - 'route53:ListHostedZones'
+                  - 'route53:ListResourceRecordSets'
+                Resource: '*'
+                Effect: Allow
+  IAMInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - !Ref IAMRole
+  VPNSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'VPN Security Groups'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: VPNServerSecurityGroup
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: '500'
+          ToPort: '500'
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: udp
+          FromPort: '500'
+          ToPort: '500'
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: udp
+          FromPort: '4500'
+          ToPort: '4500'
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: '1723'
+          ToPort: '1723'
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: udp
+          FromPort: '1723'
+          ToPort: '1723'
+  LaunchConfig:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Properties:
+      AssociatePublicIpAddress: true
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            VolumeType: gp2
+            VolumeSize: '8'
+      EbsOptimized: false
+      InstanceMonitoring: false
+      IamInstanceProfile: !Ref IAMInstanceProfile
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPair
+      SecurityGroups:
+        - !Ref VPNSecurityGroup
+      UserData:
+        'Fn::Base64': !Sub |
+            #!/bin/bash
+
+            # Setup DNS entries
+            export DNS_HOST=${DNSHost}
+            export DNS_DOMAIN=${DNSDomain}
+            curl https://raw.githubusercontent.com/taimos/route53-updater/v1.6/cloud-init/ec2-public.sh | bash
+
+            yum install -y epel-release
+            yum install -y python-pip wget unzip nmap-ncat
+            pip install awscli
+
+            setenforce 0
+
+            INSTANCE_ID=$(wget -q -O - 'http://instance-data/latest/meta-data/instance-id')
+            PRIVATE_IP=$(wget -q -O - 'http://instance-data/latest/meta-data/local-ipv4')
+            PUBLIC_IP=$(wget -q -O - 'http://instance-data/latest/meta-data/public-ipv4')
+
+            aws ec2 modify-instance-attribute --instance-id $INSTANCE_ID --no-source-dest-check
+
+            yum install -y --enablerepo=epel openswan xl2tpd
+
+            cat > /etc/ipsec.conf <<EOF
+             version 2.0
+
+            config setup
+             dumpdir=/var/run/pluto/
+             nat_traversal=yes
+             virtual_private=%v4:10.0.0.0/8,%v4:192.168.0.0/16,%v4:172.16.0.0/12,%v4:25.0.0.0/8,%v6:fd00::/8,%v6:fe80::/10
+             oe=off
+             protostack=netkey
+             nhelpers=0
+             interfaces=%defaultroute
+
+            conn vpnpsk
+             auto=add
+             left=$PRIVATE_IP
+             leftid=$PUBLIC_IP
+             leftsubnet=$PRIVATE_IP/32
+             leftnexthop=%defaultroute
+             leftprotoport=17/1701
+             rightprotoport=17/%any
+             right=%any
+             rightsubnetwithin=0.0.0.0/0
+             forceencaps=yes
+             authby=secret
+             pfs=no
+             type=transport
+             auth=esp
+             ike=3des-sha1
+             phase2alg=3des-sha1
+             dpddelay=30
+             dpdtimeout=120
+             dpdaction=clear
+            EOF
+
+            cat > /etc/ipsec.secrets <<EOF
+             $PUBLIC_IP %any : PSK "${VPNPhrase}"
+            EOF
+
+            cat > /etc/xl2tpd/xl2tpd.conf <<EOF
+            [global]
+            port = 1701
+
+            [lns default]
+             ip range = 192.168.42.10-192.168.42.250
+             local ip = 192.168.42.1
+             require chap = yes
+             refuse pap = yes
+             require authentication = yes
+             name = l2tpd
+             ;ppp debug = yes
+             pppoptfile = /etc/ppp/options.xl2tpd
+             length bit = yes
+            EOF
+
+            cat > /etc/ppp/options.xl2tpd <<EOF
+             ipcp-accept-local
+             ipcp-accept-remote
+             ms-dns 8.8.8.8
+             ms-dns 8.8.4.4
+             noccp
+             auth
+             crtscts
+             idle 1800
+             mtu 1280
+             mru 1280
+             lock
+             connect-delay 5000
+            EOF
+
+            cat > /etc/ppp/chap-secrets <<EOF
+            ${VPNUsername} l2tpd ${VPNPassword} *
+            EOF
+
+            iptables -t nat -A POSTROUTING -s 192.168.42.0/24 -o eth0 -j MASQUERADE
+            echo 1 > /proc/sys/net/ipv4/ip_forward
+
+            service ipsec start
+            service xl2tpd start
+            chkconfig ipsec on
+            chkconfig xl2tpd on
+
+  AutoScalingGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      HealthCheckGracePeriod: 300
+      HealthCheckType: EC2
+      DesiredCapacity: '1'
+      LaunchConfigurationName: !Ref LaunchConfig
+      MaxSize: '1'
+      MinSize: '1'
+      Tags:
+        - Key: Name
+          Value: !Sub VPN-Server-${DNSHost}.${DNSDomain}
+          PropagateAtLaunch: 'true'
+      VPCZoneIdentifier:
+        - !Ref SubnetA
+        - !Ref SubnetB
+
+Outputs:
+  VPC:
+    Description: 'The VPC of the VPN server'
+    Value: !Ref VPC
+    Export:
+      Name: !Sub VPN-Server-${DNSHost}-VPC
+  RouteTable:
+    Description: 'The VPC RouteTable'
+    Value: !Ref PublicRouteTable
+    Export:
+      Name: !Sub VPN-Server-${DNSHost}-RTB
+  SubnetA:
+    Description: 'The Subnet in AZ a'
+    Value: !Ref SubnetA
+    Export:
+      Name: !Sub VPN-Server-${DNSHost}-SubnetA
+  SubnetB:
+    Description: 'The Subnet in AZ b'
+    Value: !Ref SubnetB
+    Export:
+      Name: !Sub VPN-Server-${DNSHost}-SubnetB
+  SecurityGroup:
+    Description: 'The SecurityGroup of the nodes'
+    Value: !Ref VPNSecurityGroup
+    Export:
+      Name: !Sub VPN-Server-${DNSHost}-SG
+  VPNServerAddress:
+    Description: 'The FQDN of the VPN server'
+    Value: !Sub ${DNSHost}.${DNSDomain}

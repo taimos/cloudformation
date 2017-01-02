@@ -69,7 +69,7 @@ Deploy a MongoDB ReplicaSet within its own VPC.
 ### Exports
 
 Some values are exported for Cross-stack referencing. 
-You can use them to per the VPC and allow access from your instances.
+You can use them to peer the VPC and allow access from your instances.
 
 * MongoDB-Cluster-${Name}-VPC - VPC
 * MongoDB-Cluster-${Name}-RTB - RouteTable
@@ -84,6 +84,43 @@ You can use them to per the VPC and allow access from your instances.
 [![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=coreos-update-check&templateURL=https://s3.amazonaws.com/taimos-cfn-public/templates/coreos-update-check.yaml)
 
 Deploy AWS Lambda function to check for outdated CoreOS instances.
+
+## VPN Server
+
+`https://s3.amazonaws.com/taimos-cfn-public/templates/vpn-server.yaml`
+
+[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=vpn-server&templateURL=https://s3.amazonaws.com/taimos-cfn-public/templates/vpn-server.yaml)
+
+Deploy a IPSec VPN server within its own VPC.
+
+### Parameters
+
+* DNSHost - the name of the server. This will be part of the hostnames of the node
+* DNSDomain - the domain to use for the host
+* InstanceType - The type of instance to use for the server
+* VPNUsername - the username for the IPSec user
+* VPNPassword - the password for the IPSec user
+* VPNPhrase - the pre-shared key for the IPSec connection
+
+### Outputs
+
+* VPC - The VPC of the VPN server
+* RouteTable - The VPC RouteTable
+* SubnetA - The Subnet in AZ a
+* SubnetB - The Subnet in AZ b
+* SecurityGroup - The SecurityGroup of the server
+* VPNServerAddress - The FQDN of the VPN server
+  
+### Exports
+
+Some values are exported for Cross-stack referencing. 
+You can use them to peer the VPC and allow access from your instances.
+
+* VPN-Server-${DNSHost}-VPC - VPC
+* VPN-Server-${DNSHost}-RTB - RouteTable
+* VPN-Server-${DNSHost}-SubnetA - SubnetA
+* VPN-Server-${DNSHost}-SubnetB - SubnetB
+* VPN-Server-${DNSHost}-SG - SecurityGroup
 
 # Tools to build it locally
 

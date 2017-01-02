@@ -11,3 +11,7 @@ cd ..
 cd mongodb
 ./build.sh
 cd ..
+
+cd vpn-server
+./build.sh
+cd ..
