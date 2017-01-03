@@ -2,8 +2,8 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Setting up your own private and secure VPN'
 Parameters:
   DNSHost:
-    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
-    ConstraintDescription: 'must begin with a letter and contain only alphanumeric characters.'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9-]*'
+    ConstraintDescription: 'must begin with a letter and contain only alphanumeric characters or hyphens.'
     Description: 'Hostname of the VPN Server'
     MaxLength: '255'
     MinLength: '1'
@@ -43,9 +43,9 @@ Parameters:
 Mappings:
   RegionMap:
     eu-central-1:
-      AMI: ami-9bf712f4
+      AMI: ami-211ada4e
     eu-west-1:
-      AMI: ami-7abd0209
+      AMI: ami-c51e3eb6
 Resources:
   VPC:
     Type: 'AWS::EC2::VPC'
@@ -124,7 +124,7 @@ Resources:
             Action: 'sts:AssumeRole'
       Path: /
       Policies:
-        - PolicyName: MongoDB-Cluster-Policy
+        - PolicyName: VPN-Server-Policy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -135,6 +135,14 @@ Resources:
                   - 'route53:ListResourceRecordSets'
                 Resource: '*'
                 Effect: Allow
+              - Action: 'ec2:ModifyInstanceAttribute'
+                Resource: '*'
+                Effect: Allow
+#                Not yet possible
+#                Condition:
+#                  StringEquals:
+#                    ec2:ResourceTag/aws:cloudformation:stack-name: !Ref 'AWS::StackName'
+#                    ec2:ResourceTag/aws:cloudformation:logical-id: 'AutoScalingGroup'
   IAMInstanceProfile:
     Type: 'AWS::IAM::InstanceProfile'
     Properties:
@@ -150,6 +158,10 @@ Resources:
         - Key: Name
           Value: VPNServerSecurityGroup
       SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
         - CidrIp: 0.0.0.0/0
           IpProtocol: tcp
           FromPort: '500'
@@ -175,7 +187,7 @@ Resources:
     Properties:
       AssociatePublicIpAddress: true
       BlockDeviceMappings:
-        - DeviceName: /dev/sda1
+        - DeviceName: /dev/xvda
           Ebs:
             DeleteOnTermination: true
             VolumeType: gp2
@@ -192,14 +204,13 @@ Resources:
         'Fn::Base64': !Sub |
             #!/bin/bash
 
+            yum install -y epel-release
+            yum install -y wget
+
             # Setup DNS entries
             export DNS_HOST=${DNSHost}
             export DNS_DOMAIN=${DNSDomain}
-            curl https://raw.githubusercontent.com/taimos/route53-updater/v1.6/cloud-init/ec2-public.sh | bash
-
-            yum install -y epel-release
-            yum install -y python-pip wget unzip nmap-ncat
-            pip install awscli
+            curl https://raw.githubusercontent.com/taimos/route53-updater/v1.7/cloud-init/ec2-public.sh | bash
 
             setenforce 0
 
@@ -207,12 +218,13 @@ Resources:
             PRIVATE_IP=$(wget -q -O - 'http://instance-data/latest/meta-data/local-ipv4')
             PUBLIC_IP=$(wget -q -O - 'http://instance-data/latest/meta-data/public-ipv4')
 
+            aws configure set default.region ${AWS::Region}
             aws ec2 modify-instance-attribute --instance-id $INSTANCE_ID --no-source-dest-check
 
             yum install -y --enablerepo=epel openswan xl2tpd
 
             cat > /etc/ipsec.conf <<EOF
-             version 2.0
+            version 2.0
 
             config setup
              dumpdir=/var/run/pluto/
@@ -246,7 +258,7 @@ Resources:
             EOF
 
             cat > /etc/ipsec.secrets <<EOF
-             $PUBLIC_IP %any : PSK "${VPNPhrase}"
+            $PUBLIC_IP %any : PSK "${VPNPhrase}"
             EOF
 
             cat > /etc/xl2tpd/xl2tpd.conf <<EOF
@@ -266,18 +278,18 @@ Resources:
             EOF
 
             cat > /etc/ppp/options.xl2tpd <<EOF
-             ipcp-accept-local
-             ipcp-accept-remote
-             ms-dns 8.8.8.8
-             ms-dns 8.8.4.4
-             noccp
-             auth
-             crtscts
-             idle 1800
-             mtu 1280
-             mru 1280
-             lock
-             connect-delay 5000
+            ipcp-accept-local
+            ipcp-accept-remote
+            ms-dns 8.8.8.8
+            ms-dns 8.8.4.4
+            noccp
+            auth
+            crtscts
+            idle 1800
+            mtu 1280
+            mru 1280
+            lock
+            connect-delay 5000
             EOF
 
             cat > /etc/ppp/chap-secrets <<EOF
@@ -291,7 +303,6 @@ Resources:
             service xl2tpd start
             chkconfig ipsec on
             chkconfig xl2tpd on
-
   AutoScalingGroup:
     Type: 'AWS::AutoScaling::AutoScalingGroup'
     Properties:
