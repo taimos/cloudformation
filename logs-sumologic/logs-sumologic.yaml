@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Lambda function to ship CloudWatchLogs to SumoLogic'
+Parameters:
+  LogGroup:
+    Type: String
+    Description: 'The name of the CloudWatchLogs log group'
+  SumoLogicCollector:
+    Type: String
+    Description: 'The host of the SumoLogic collector'
+  SumoLogicToken:
+    Type: String
+    Description: 'The token of the SumoLogic collector'
+    NoEcho: true
+Resources:
+  FunctionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 'arn:aws:logs:*:*:*'
+  SumoFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt [FunctionRole, Arn]
+      Code:
+        ZipFile: !Sub |
+            "use strict";
+
+            var zlib = require('zlib');
+            var https = require('https');
+
+            exports.handler = function (event, context, callback) {
+              var payload = new Buffer(event.awslogs.data, 'base64');
+              zlib.gunzip(payload, function(e, result) {
+                  if (e) {
+                      context.fail(e);
+                  } else {
+                      result = JSON.parse(result.toString('ascii'));
+                      var lines = "";
+                      result.logEvents.forEach(function(log) {
+                          lines += log.timestamp + ' stream=' + result.logStream + ' message=' + log.message + '\n';
+                      });
+                      zlib.gzip(lines, function(err, zipped) {
+                          if (!err) {
+                            var post_options = {
+                              host: '${SumoLogicCollector}',
+                              port: '443',
+                              path: '/receiver/v1/http/${SumoLogicToken}',
+                              method: 'POST',
+                              headers: {
+                                'Content-Encoding': 'gzip',
+                                'Content-Type': 'text/plain',
+                                'X-Sumo-Name': '${LogGroup}'
+                              }
+                            };
+
+                            var post_req = https.request(post_options, function(res) {
+                                res.setEncoding('utf8');
+                                res.on('data', function (chunk) {
+                                    console.log('Response: ' + chunk);
+                                    context.succeed();
+                                });
+                            });
+                            post_req.write(zipped);
+                            post_req.end();
+                          } else {
+                              context.fail(err);
+                          }
+                      });
+                  }
+              });
+            };
+      Runtime: nodejs4.3
+      Timeout: '10'
+  SubscriptionFilter:
+    Type: "AWS::Logs::SubscriptionFilter"
+    Properties:
+      LogGroupName: !Ref LogGroup
+      DestinationArn: !GetAtt SumoFunction.Arn
+      FilterPattern: ''
+  InvokeLambdaPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      FunctionName: !GetAtt SumoFunction.Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: !Sub logs.${AWS::Region}.amazonaws.com

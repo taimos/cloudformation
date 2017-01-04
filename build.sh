@@ -11,3 +11,7 @@ cd ..
 cd mongodb
 ./build.sh
 cd ..
+
+cd logs-sumologic
+./build.sh
+cd ..
