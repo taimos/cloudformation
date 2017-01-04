@@ -85,6 +85,24 @@ You can use them to per the VPC and allow access from your instances.
 
 Deploy AWS Lambda function to check for outdated CoreOS instances.
 
+## Cloudwatch logs to SumoLogic
+
+`https://s3.amazonaws.com/taimos-cfn-public/templates/logs-sumologic.yaml`
+
+Template to use as substack to ship logs from a CloudWatch log group to SumoLogic
+
+```
+  LogShipper:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      Parameters:
+        LogGroup: !Ref SomeCloudWatchLogGroup
+        SumoLogicCollector: 'endpoint1.collection.eu.sumologic.com'
+        SumoLogicToken: 'SomeBase64EncodedToken'
+      TemplateURL: 'https://s3.amazonaws.com/taimos-cfn-public/templates/logs-sumologic.yaml'
+```
+
+
 # Tools to build it locally
 
 * node / npm
