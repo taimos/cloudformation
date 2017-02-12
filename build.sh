@@ -15,3 +15,7 @@ cd ..
 cd logs-sumologic
 ./build.sh
 cd ..
+
+cd vpn-server
+./build.sh
+cd ..
