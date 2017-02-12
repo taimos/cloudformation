@@ -139,6 +139,17 @@ You can use them to peer the VPC and allow access from your instances.
 * VPN-Server-${DNSHost}-SubnetB - SubnetB
 * VPN-Server-${DNSHost}-SG - SecurityGroup
 
+## Taimos remote support
+
+`https://s3.amazonaws.com/taimos-cfn-public/templates/support-access.yaml`
+
+[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=support-access&templateURL=https://s3.amazonaws.com/taimos-cfn-public/templates/support-access.yaml)
+
+To grant us access to your AWS account for support, create a CloudFormation stack using this link. 
+This will create an IAM role we can assume that grants us AdministratorAccess. 
+You can limit the permissions by attaching a different policy to the IAM role `TaimosSupport`. 
+Please send us the outputs of this stack.
+
 # Tools to build it locally
 
 * node / npm

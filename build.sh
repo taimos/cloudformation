@@ -19,3 +19,7 @@ cd ..
 cd vpn-server
 ./build.sh
 cd ..
+
+cd support-access
+./build.sh
+cd ..
