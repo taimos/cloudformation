@@ -143,7 +143,7 @@ You can use them to peer the VPC and allow access from your instances.
 
 `https://s3.amazonaws.com/taimos-cfn-public/templates/support-access.yaml`
 
-[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=taimos-support-access&templateURL=https://s3.amazonaws.com/taimos-cfn-public/templates/support-access.yaml)
+[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=eu-central-1#/stacks/new?stackName=taimos-support-access&templateURL=https://s3.amazonaws.com/taimos-cfn-public/templates/support-access.yaml)
 
 To grant us access to your AWS account for support, create a CloudFormation stack using this link. 
 This will create an IAM role we can assume that grants us AdministratorAccess. 
