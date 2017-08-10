@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'IAM Role for cross-account support access from Taimos'
+Description: 'IAM Role for cross-account admin support access from Taimos'
 Resources:
   SupportRole:
     Type: 'AWS::IAM::Role'
@@ -13,24 +13,11 @@ Resources:
             Principal:
               AWS:
                 - 'arn:aws:iam::292004443359:user/hoegertn'
-            Condition:
-              Bool:
-                'aws:MultiFactorAuthPresent': 'true'
       Path: /
-      Policies:
-        - PolicyName: root
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Sid: AllowRemoteAdminAccess
-                Effect: Allow
-                Action: '*'
-                Resource: '*'
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AdministratorAccess
 
 Outputs:
-  RoleName:
-    Description: 'The name of the support role'
-    Value: !Ref SupportRole
-  AccountId:
-    Description: 'The id of the AWS account'
-    Value: !Ref 'AWS::AccountId'
+  RoleARN:
+    Description: 'The ARN of the support role; Please send this to Taimos support'
+    Value: !GetAtt SupportRole.Arn
