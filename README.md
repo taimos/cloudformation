@@ -139,6 +139,24 @@ You can use them to peer the VPC and allow access from your instances.
 * VPN-Server-${DNSHost}-SubnetB - SubnetB
 * VPN-Server-${DNSHost}-SG - SecurityGroup
 
+## Static website
+
+`https://s3.amazonaws.com/taimos-cfn-public/templates/static-website.yaml`
+
+[![Launch Stack](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=static-website&templateURL=https://s3.amazonaws.com/taimos-cfn-public/templates/static-website.yaml)
+
+Deploy static website using CloudFront, S3 and Route53
+
+### Parameters
+
+* DomainName - the domain to use for the website (without www.)
+* CertificateArn - ARN of the certificate in ACM
+
+### Outputs
+
+* WebBucket - The name of the S3 bucket to put website files into
+* CloudFrontDistribution - The CloudFront distribution hosting the website
+
 ## Taimos remote support
 
 `https://s3.amazonaws.com/taimos-cfn-public/templates/support-access.yaml`

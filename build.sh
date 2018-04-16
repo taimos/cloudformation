@@ -23,3 +23,7 @@ cd ..
 cd support-access
 ./build.sh
 cd ..
+
+cd static-website
+./build.sh
+cd ..
