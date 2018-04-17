@@ -98,7 +98,7 @@ Resources:
           - !Ref DomainName
         Comment: !Sub '${DomainName} APEX Redirect'
         Origins:
-          - DomainName: !Sub ${S3BucketRedirect}.s3-website.eu-central-1.amazonaws.com
+          - DomainName: !Sub ${S3BucketRedirect}.s3-website.us-east-1.amazonaws.com
             Id: s3origin
             CustomOriginConfig:
               OriginProtocolPolicy: http-only
