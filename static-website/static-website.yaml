@@ -67,7 +67,7 @@ Resources:
         PriceClass: PriceClass_All
         ViewerCertificate:
           SslSupportMethod: sni-only
-          MinimumProtocolVersion: TLSv1
+          MinimumProtocolVersion: TLSv1.1_2016
           AcmCertificateArn: !Ref CertificateArn
   Route53Record:
     Type: 'AWS::Route53::RecordSet'
@@ -117,7 +117,7 @@ Resources:
         PriceClass: PriceClass_All
         ViewerCertificate:
           SslSupportMethod: sni-only
-          MinimumProtocolVersion: TLSv1
+          MinimumProtocolVersion: TLSv1.1_2016
           AcmCertificateArn: !Ref CertificateArn
   Route53RecordAPEX:
     Type: 'AWS::Route53::RecordSet'
