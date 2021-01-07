@@ -12,8 +12,7 @@ Resources:
             Effect: Allow
             Principal:
               AWS:
-                - 'arn:aws:iam::292004443359:user/hoegertn'
-                - 'arn:aws:iam::292004443359:role/RemoteSupport'
+                - 'arn:aws:iam::292004443359:root'
       Path: /
       ManagedPolicyArns:
       - arn:aws:iam::aws:policy/AdministratorAccess
