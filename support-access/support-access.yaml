@@ -1,5 +1,8 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'IAM Role for cross-account admin support access from Taimos'
+Parameters:
+  CustomerName:
+    Type: String
 Resources:
   SupportRole:
     Type: 'AWS::IAM::Role'
@@ -16,7 +19,12 @@ Resources:
       Path: /
       ManagedPolicyArns:
       - arn:aws:iam::aws:policy/AdministratorAccess
-
+  SupportReporter:
+    Type: 'AWS::CloudFormation::CustomResource'
+    Properties:
+      ServiceToken: arn:aws:sns:eu-central-1:292004443359:support-center-CRTopic19A9A9BC-BUYAQ693VBAS
+      RoleArn: !GetAtt SupportRole.Arn
+      Customer: !Ref CustomerName
 Outputs:
   RoleARN:
     Description: 'The ARN of the support role; Please send this to Taimos support'
